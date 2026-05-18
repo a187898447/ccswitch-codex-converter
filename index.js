@@ -11,15 +11,22 @@ const HOST = process.env.CONVERTER_HOST || "127.0.0.1";
 
 const PROVIDER_BASE_URL = (
   process.env.PROVIDER_BASE_URL
-  || process.env.PROVIDER_BASE_URL_URL  // legacy
+  || process.env.DEEPSEEK_BASE_URL  // legacy
   || "https://api.deepseek.com"
 ).replace(/\/+$/, "");
 
 // Optional: override API key. If not set, the Authorization header from
 // CC Switch is forwarded as-is to the upstream provider.
 const PROVIDER_API_KEY = process.env.PROVIDER_API_KEY
-  || process.env.PROVIDER_API_KEY   // legacy
+  || process.env.DEEPSEEK_API_KEY   // legacy
   || "";
+
+const DEBUG = process.env.CONVERTER_DEBUG === "1";
+
+function log(level, msg) {
+  const ts = new Date().toISOString().slice(11, 23);
+  console.error(`[${ts} ${level}] ${msg}`);
+}
 
 // Optional: model name mapping. If not set, model names pass through as-is.
 // Format: "codex_model:deepseek_model,..."
@@ -357,8 +364,12 @@ async function handleChatCompletions(req, res) {
   delete body.stream_options;
   stripUnsupported(body);
 
+  if (DEBUG) log("info", `POST ${req._path} model=${body.model} stream=${body.stream}`);
+
   try {
     const dsRes = await makeDeepSeekRequest("POST", "/v1/chat/completions", apiKey, req.headers, body);
+
+    if (DEBUG) log("info", `upstream response ${dsRes.statusCode}`);
 
     if (body.stream) {
       res.writeHead(dsRes.statusCode, {
@@ -372,6 +383,7 @@ async function handleChatCompletions(req, res) {
       dsRes.on("data", (c) => chunks.push(c));
       dsRes.on("end", () => {
         const raw = Buffer.concat(chunks).toString();
+        if (DEBUG) log("info", `upstream body: ${raw.slice(0, 500)}`);
         try {
           const data = JSON.parse(raw);
           jsonResponse(res, data, dsRes.statusCode);
@@ -382,6 +394,7 @@ async function handleChatCompletions(req, res) {
       });
     }
   } catch (err) {
+    log("error", err.message);
     jsonResponse(res, { error: { message: err.message, type: "server_error" } }, 502);
   }
 
@@ -406,8 +419,15 @@ async function handleResponses(req, res) {
 
   const chatReq = responsesToChatCompletions(body);
 
+  if (DEBUG) {
+    log("info", `POST ${req._path} model=${body.model} stream=${body.stream}`);
+    log("info", `chatReq: ${JSON.stringify({...chatReq, messages: chatReq.messages?.length + " msgs"})}`);
+  }
+
   try {
     const dsRes = await makeDeepSeekRequest("POST", "/v1/chat/completions", apiKey, req.headers, chatReq);
+
+    if (DEBUG) log("info", `upstream response ${dsRes.statusCode}`);
 
     if (body.stream) {
       res.writeHead(dsRes.statusCode, {
@@ -421,8 +441,15 @@ async function handleResponses(req, res) {
       dsRes.on("data", (c) => chunks.push(c));
       dsRes.on("end", () => {
         const raw = Buffer.concat(chunks).toString();
+        if (DEBUG) log("info", `upstream body: ${raw.slice(0, 500)}`);
         try {
           const chatResp = JSON.parse(raw);
+          // If upstream returned an error, pass it through as-is
+          if (dsRes.statusCode >= 400 || chatResp.error) {
+            res.writeHead(dsRes.statusCode, dsRes.headers);
+            res.end(raw);
+            return;
+          }
           jsonResponse(res, chatCompletionToResponses(chatResp, body.model), dsRes.statusCode);
         } catch {
           res.writeHead(dsRes.statusCode, dsRes.headers);
@@ -431,6 +458,7 @@ async function handleResponses(req, res) {
       });
     }
   } catch (err) {
+    log("error", err.message);
     jsonResponse(res, { error: { message: err.message, type: "server_error" } }, 502);
   }
 
@@ -479,8 +507,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`[ccswitch-deepseek-converter] http://${HOST}:${PORT}`);
-  console.log(`  DeepSeek API:  ${PROVIDER_BASE_URL}`);
-  console.log(`  Auth mode:     ${PROVIDER_API_KEY ? "override (PROVIDER_API_KEY)" : "passthrough (CC Switch Authorization header)"}`);
-  console.log(`  Model mapping: ${MODEL_MAP.size > 0 ? JSON.stringify(Object.fromEntries(MODEL_MAP)) : "passthrough (no mapping)"}`);
+  process.stdout.write(`[ccswitch-codex-converter] http://${HOST}:${PORT}\n`);
+  process.stdout.write(`  Provider:  ${PROVIDER_BASE_URL}\n`);
+  process.stdout.write(`  Auth:      ${PROVIDER_API_KEY ? "override" : "passthrough"}\n`);
+  process.stdout.write(`  Models:    ${MODEL_MAP.size > 0 ? JSON.stringify(Object.fromEntries(MODEL_MAP)) : "passthrough"}\n`);
+  process.stdout.write(`  Debug:     ${DEBUG ? "on" : "off"}\n`);
 });
