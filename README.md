@@ -1,15 +1,31 @@
-# CC Switch × DeepSeek Codex Converter
+# CC Switch Universal Provider Converter
 
-一个零配置的协议转换器，使 DeepSeek 模型通过 CC Switch 在 OpenAI Codex 中使用。
+一个零配置的协议转换器，使任何兼容 OpenAI Chat Completions API 的模型提供商通过 CC Switch 在 Codex 中使用。
 
-Codex 请求 → CC Switch 代理 → 本转换器 → DeepSeek API
+Codex → CC Switch → converter(:11888) → 任意 OpenAI 兼容 API
 
 ## 前置条件
 
 - [Node.js](https://nodejs.org) >= 18
 - [CC Switch](https://ccswitch.app) 已安装
 - [OpenAI Codex](https://github.com/openai/codex) 已安装
-- DeepSeek API key（[platform.deepseek.com](https://platform.deepseek.com) 获取）
+- 目标提供商的 API key
+
+## 支持的提供商
+
+任何兼容 OpenAI `/v1/chat/completions` 接口的都能用：
+
+| 提供商 | PROVIDER_BASE_URL |
+|---|---|
+| DeepSeek | `https://api.deepseek.com` |
+| 豆包（字节） | `https://ark.cn-beijing.volces.com/api/v3` |
+| 通义千问（阿里） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Kimi / Moonshot | `https://api.moonshot.cn` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` |
+| SiliconFlow | `https://api.siliconflow.cn` |
+| OpenRouter | `https://openrouter.ai/api` |
+| Ollama（本地） | `http://localhost:11434` |
+| vLLM（本地） | `http://localhost:8000` |
 
 ## 快速开始
 
@@ -20,27 +36,20 @@ cd /path/to/converter
 ./start.sh
 ```
 
-输出：
-```
-[ccswitch-deepseek-converter] http://127.0.0.1:11888
-  DeepSeek API:  https://api.deepseek.com
-  Auth mode:     passthrough
-  Model mapping: passthrough
-```
-
 验证：
 ```bash
 curl -s http://127.0.0.1:11888/health | python3 -m json.tool
 ```
 
-### 2. 查询 DeepSeek 可用模型
+### 2. 查询可用的模型名
 
 ```bash
+# 以 DeepSeek 为例，替换为你的 BASE_URL 和 API key
 curl -s https://api.deepseek.com/v1/models \
-  -H "Authorization: Bearer <你的DeepSeek API key>"
+  -H "Authorization: Bearer <你的API key>"
 ```
 
-记下你想要使用的模型名。
+记下模型名。
 
 ### 3. 配置 CC Switch
 
@@ -48,13 +57,13 @@ curl -s https://api.deepseek.com/v1/models \
 
 | 字段 | 值 |
 |---|---|
-| 名称 | `DeepSeek` |
+| 名称 | 任意，如 `DeepSeek` |
 | Base URL | `http://127.0.0.1:11888` |
 | Wire API | `responses` |
-| API Key | 你的 DeepSeek API key |
+| API Key | 你的提供商 API key |
 | 模型 | 第 2 步查到的模型名 |
 
-保存后，在 CC Switch 主界面切换到 DeepSeek 提供商。
+保存，然后在 CC Switch 主界面切换到这个提供商。
 
 ### 4. 验证
 
@@ -62,43 +71,57 @@ curl -s https://api.deepseek.com/v1/models \
 codex exec "hello" -s read-only
 ```
 
-## 环境变量
+## 切换到其他提供商
 
-所有环境变量均可选，转换器默认透传 CC Switch 的配置。
+只需修改 `.env` 文件中的 `PROVIDER_BASE_URL`，或直接在 CC Switch 中填入对应提供商的 API key：
 
 ```bash
-# 可选：强制指定 API key（不配置则透传 CC Switch 的 Authorization header）
-DEEPSEEK_API_KEY=sk-xxx
+# 豆包
+PROVIDER_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 
-# 可选：自建或第三方 DeepSeek 兼容端点
-DEEPSEEK_BASE_URL=https://your-endpoint.com
+# 通义千问
+PROVIDER_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
-# 可选：模型名映射，格式 from:to,from:to
+# Ollama 本地模型
+PROVIDER_BASE_URL=http://localhost:11434
+```
+
+## 环境变量
+
+所有环境变量均可选。
+
+```bash
+# 提供商 endpoint（不设置则默认 DeepSeek）
+PROVIDER_BASE_URL=https://api.deepseek.com
+
+# 强制指定 API key（不设置则透传 CC Switch 的 Authorization header）
+PROVIDER_API_KEY=sk-xxx
+
+# 模型名映射，格式 from:to,from:to
 # 用于在 CC Switch 里继续使用 OpenAI 模型名
 MODEL_MAP=gpt-5.5:deepseek-chat,gpt-5.1:deepseek-chat
 
-# 可选：监听地址
+# 监听地址
 CONVERTER_PORT=11888
 CONVERTER_HOST=127.0.0.1
 ```
 
-放在 `.env` 文件中：
+在 `.env` 文件中配置：
 ```bash
-cp .env.example .env
-# 编辑 .env
+cp .env.example .env && vi .env
 ```
 
 ## 开机自启（macOS）
 
 ```bash
-cat > ~/Library/LaunchAgents/com.deepseek.converter.plist << 'PLIST'
+cat > ~/Library/LaunchAgents/com.ccswitch.converter.plist << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.deepseek.converter</string>
+    <string>com.ccswitch.converter</string>
     <key>ProgramArguments</key>
     <array>
         <string>/path/to/converter/start.sh</string>
@@ -108,35 +131,35 @@ cat > ~/Library/LaunchAgents/com.deepseek.converter.plist << 'PLIST'
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/deepseek-converter.log</string>
+    <string>/tmp/ccswitch-converter.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/deepseek-converter.err</string>
+    <string>/tmp/ccswitch-converter.err</string>
 </dict>
 </plist>
 PLIST
 
-launchctl load ~/Library/LaunchAgents/com.deepseek.converter.plist
+launchctl load ~/Library/LaunchAgents/com.ccswitch.converter.plist
 ```
 
 ## 工作原理
 
 ```
-┌───────┐     ┌──────────┐     ┌─────────────┐     ┌──────────┐
-│ Codex │ ──▶ │ CC Switch│ ──▶ │  converter  │ ──▶ │ DeepSeek │
-│       │     │  (proxy) │     │ :11888      │     │ API      │
-└───────┘     └──────────┘     └─────────────┘     └──────────┘
+┌───────┐     ┌──────────┐     ┌─────────────┐     ┌──────────────┐
+│ Codex │ ──▶ │ CC Switch│ ──▶ │  converter  │ ──▶ │ 任意 OpenAI  │
+│       │     │  (proxy) │     │ :11888      │     │ 兼容 API     │
+└───────┘     └──────────┘     └─────────────┘     └──────────────┘
                                       │
                               透传 Authorization header
                               透传 model 名称
-                              清洗不支持参数
-                              Responses API ↔ Chat Completions 转换
+                              清洗不支持参数（logprobs、reasoning 等）
+                              Responses API ↔ Chat Completions 格式互转
+                              SSE 流式双向转发
 ```
 
-转换器负责：
-- **格式转换**：OpenAI Responses API 与 DeepSeek Chat Completions API 互转
-- **参数清洗**：移除 DeepSeek 不支持的参数（logprobs、reasoning 等）
-- **流式支持**：SSE 双向透传和格式适配
-- **零依赖**：仅使用 Node.js 内置模块
+- **格式转换**：OpenAI Responses API ↔ Chat Completions API
+- **参数清洗**：自动移除提供商不支持的参数
+- **流式支持**：SSE 透传
+- **零依赖**：仅 Node.js 内置模块
 
 ## License
 

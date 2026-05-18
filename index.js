@@ -9,13 +9,17 @@ import { Transform } from "node:stream";
 const PORT = parseInt(process.env.CONVERTER_PORT || "11888", 10);
 const HOST = process.env.CONVERTER_HOST || "127.0.0.1";
 
-const DEEPSEEK_BASE = (
-  process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"
+const PROVIDER_BASE_URL = (
+  process.env.PROVIDER_BASE_URL
+  || process.env.PROVIDER_BASE_URL_URL  // legacy
+  || "https://api.deepseek.com"
 ).replace(/\/+$/, "");
 
 // Optional: override API key. If not set, the Authorization header from
-// CC Switch is forwarded as-is to DeepSeek.
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
+// CC Switch is forwarded as-is to the upstream provider.
+const PROVIDER_API_KEY = process.env.PROVIDER_API_KEY
+  || process.env.PROVIDER_API_KEY   // legacy
+  || "";
 
 // Optional: model name mapping. If not set, model names pass through as-is.
 // Format: "codex_model:deepseek_model,..."
@@ -82,7 +86,7 @@ function readBody(req) {
 
 function extractApiKey(req) {
   // Use explicit override if configured
-  if (DEEPSEEK_API_KEY) return DEEPSEEK_API_KEY;
+  if (PROVIDER_API_KEY) return PROVIDER_API_KEY;
 
   // Otherwise forward the Authorization header from CC Switch as-is
   const auth = req.headers["authorization"] || "";
@@ -92,7 +96,7 @@ function extractApiKey(req) {
 
 function makeDeepSeekRequest(method, path, apiKey, headers, body) {
   return new Promise((resolve, reject) => {
-    const url = new URL(path, DEEPSEEK_BASE);
+    const url = new URL(path, PROVIDER_BASE_URL);
     const opts = {
       method,
       hostname: url.hostname,
@@ -338,7 +342,7 @@ async function handleChatCompletions(req, res) {
   if (!apiKey) {
     return jsonResponse(
       res,
-      { error: { message: "No API key available. Set DEEPSEEK_API_KEY or configure CC Switch provider auth.", type: "auth_error" } },
+      { error: { message: "No API key available. Set PROVIDER_API_KEY or configure CC Switch provider auth.", type: "auth_error" } },
       401
     );
   }
@@ -387,7 +391,7 @@ async function handleResponses(req, res) {
   if (!apiKey) {
     return jsonResponse(
       res,
-      { error: { message: "No API key available. Set DEEPSEEK_API_KEY or configure CC Switch provider auth.", type: "auth_error" } },
+      { error: { message: "No API key available. Set PROVIDER_API_KEY or configure CC Switch provider auth.", type: "auth_error" } },
       401
     );
   }
@@ -429,8 +433,8 @@ async function handleHealth(req, res) {
   if (req.method === "GET" && (parseUrl(req) === "/health" || parseUrl(req) === "/")) {
     return jsonResponse(res, {
       status: "ok",
-      deepseek_base: DEEPSEEK_BASE,
-      mode: DEEPSEEK_API_KEY ? "override" : "passthrough",
+      provider_base_url: PROVIDER_BASE_URL,
+      mode: PROVIDER_API_KEY ? "override" : "passthrough",
       model_map: MODEL_MAP.size > 0 ? Object.fromEntries(MODEL_MAP) : "passthrough",
       uptime: process.uptime(),
     });
@@ -467,7 +471,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[ccswitch-deepseek-converter] http://${HOST}:${PORT}`);
-  console.log(`  DeepSeek API:  ${DEEPSEEK_BASE}`);
-  console.log(`  Auth mode:     ${DEEPSEEK_API_KEY ? "override (DEEPSEEK_API_KEY)" : "passthrough (CC Switch Authorization header)"}`);
+  console.log(`  DeepSeek API:  ${PROVIDER_BASE_URL}`);
+  console.log(`  Auth mode:     ${PROVIDER_API_KEY ? "override (PROVIDER_API_KEY)" : "passthrough (CC Switch Authorization header)"}`);
   console.log(`  Model mapping: ${MODEL_MAP.size > 0 ? JSON.stringify(Object.fromEntries(MODEL_MAP)) : "passthrough (no mapping)"}`);
 });
