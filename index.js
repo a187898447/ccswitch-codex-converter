@@ -283,18 +283,20 @@ function createChatToResponsesSSETransform() {
 // Routes
 // ---------------------------------------------------------------------------
 
-function parseUrl(req) {
-  const raw = req.url || "/";
-  const idx = raw.indexOf("?");
-  return idx === -1 ? raw : raw.slice(0, idx);
+// Attach normalized method + path to req once
+function preflight(req) {
+  if (req._method) return; // already done
+  req._method = req.method;
+  const raw = (req.url || "/").split("?")[0];
+  req._path = raw.replace(/\/+$/, "") || "/";
 }
 
 async function handleModels(req, res) {
-  const path = parseUrl(req);
-  if (req.method !== "GET") return null;
+  preflight(req);
+  if (req._method !== "GET") return null;
 
-  if (path === "/v1/models") {
-    // If MODEL_MAP is configured, return mapped model IDs
+  // /v1/models or /models
+  if (req._path === "/v1/models" || req._path === "/models") {
     const seen = new Set();
     const data = [];
     if (MODEL_MAP.size > 0) {
@@ -309,7 +311,6 @@ async function handleModels(req, res) {
         }
       }
     } else {
-      // Without MODEL_MAP, just report the DeepSeek models
       data.push(
         { id: "deepseek-chat", object: "model", created: 1700000000, owned_by: "deepseek" },
         { id: "deepseek-reasoner", object: "model", created: 1700000000, owned_by: "deepseek" }
@@ -318,23 +319,28 @@ async function handleModels(req, res) {
     return jsonResponse(res, { object: "list", data });
   }
 
-  const match = path.match(/^\/v1\/models\/(.+)$/);
+  // /v1/models/:id or /models/:id
+  const match = req._path.match(/^\/v1\/models\/(.+)$/) || req._path.match(/^\/models\/(.+)$/);
   if (match) {
     const id = decodeURIComponent(match[1]);
-    const mapped = MODEL_MAP.get(id) || id;
-    return jsonResponse(res, {
-      id,
-      object: "model",
-      created: 1700000000,
-      owned_by: "deepseek",
-    });
+    return jsonResponse(res, { id, object: "model", created: 1700000000, owned_by: "deepseek" });
   }
 
   return null;
 }
 
+// Returns true if path ends with one of the given suffixes
+function pathEndsWith(path, suffixes) {
+  for (const s of suffixes) {
+    if (path === s || path.endsWith(s)) return true;
+  }
+  return false;
+}
+
 async function handleChatCompletions(req, res) {
-  if (req.method !== "POST" || parseUrl(req) !== "/v1/chat/completions") return null;
+  preflight(req);
+  if (req._method !== "POST") return null;
+  if (!pathEndsWith(req._path, ["/v1/chat/completions", "/chat/completions", "/openai/chat/completions"])) return null;
 
   const body = await readBody(req);
   const apiKey = extractApiKey(req);
@@ -383,7 +389,9 @@ async function handleChatCompletions(req, res) {
 }
 
 async function handleResponses(req, res) {
-  if (req.method !== "POST" || parseUrl(req) !== "/v1/responses") return null;
+  preflight(req);
+  if (req._method !== "POST") return null;
+  if (!pathEndsWith(req._path, ["/v1/responses", "/responses", "/openai/responses"])) return null;
 
   const body = await readBody(req);
   const apiKey = extractApiKey(req);
@@ -430,7 +438,8 @@ async function handleResponses(req, res) {
 }
 
 async function handleHealth(req, res) {
-  if (req.method === "GET" && (parseUrl(req) === "/health" || parseUrl(req) === "/")) {
+  preflight(req);
+  if (req._method === "GET" && (req._path === "/health" || req._path === "/")) {
     return jsonResponse(res, {
       status: "ok",
       provider_base_url: PROVIDER_BASE_URL,
