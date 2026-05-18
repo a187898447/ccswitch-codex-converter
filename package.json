@@ -1,5 +1,5 @@
 {
-  "name": "ccswitch-codex-adapter",
+  "name": "ccswitch-codex-converter",
   "version": "1.0.0",
   "description": "Protocol adapter that enables any OpenAI-compatible model provider in Codex via CC Switch.",
   "main": "index.js",
