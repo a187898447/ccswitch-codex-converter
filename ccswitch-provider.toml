@@ -1,0 +1,18 @@
+# CC Switch universal provider config for DeepSeek via converter
+#
+# Key points:
+# - model: set to the DeepSeek model name directly (converter passes it through)
+# - converter forwards the Authorization header from CC Switch to DeepSeek
+# - make sure your DeepSeek API key is configured in CC Switch's provider auth
+#
+# Import into CC Switch: Settings → Providers → Import
+
+model_provider = "deepseek"
+model = "deepseek-chat"
+# For reasoning-heavy tasks use: model = "deepseek-reasoner"
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "http://127.0.0.1:11888"
+wire_api = "responses"
+requires_openai_auth = true

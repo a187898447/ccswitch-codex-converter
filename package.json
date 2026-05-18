@@ -1,0 +1,14 @@
+{
+  "name": "ccswitch-deepseek-codex-converter",
+  "version": "1.0.0",
+  "description": "Converts OpenAI Responses API requests to DeepSeek Chat Completions API, enabling DeepSeek models in Codex via CC Switch.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
